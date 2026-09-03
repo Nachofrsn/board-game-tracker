@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { boardGroups, boardPlayers, boardGroupPlayers, boardGames, boardGroupGames, boardMatches, boardMatchPlayers } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
+import { auth } from '@/lib/auth'
+import { headers } from 'next/headers'
 
 export async function GET() {
   const [groups, players, groupPlayers, games, groupGames, matches, matchPlayers] = await Promise.all([
@@ -11,6 +13,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const body = await request.json()
   const id = String(body.id || '')
   if (!id || !['group', 'player', 'game', 'match'].includes(body.type)) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })

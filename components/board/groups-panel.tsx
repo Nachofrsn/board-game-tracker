@@ -8,9 +8,16 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/
 import { PlayerAvatar } from '@/components/board/player-avatar'
 import { CreateGroupDialog } from '@/components/board/create-group-dialog'
 import { useStore } from '@/lib/store'
+import { authClient } from '@/lib/auth-client'
+import Link from 'next/link'
 
 export function GroupsPanel({ onOpenGroup }: { onOpenGroup: (id: string) => void }) {
   const { groups, players, games, matches } = useStore()
+  const { data: session, isPending } = authClient.useSession()
+  const visibleGroups = session ? groups.filter((group) => players.some((player) => player.groupId === group.id && player.name.toLowerCase() === session.user.name.toLowerCase())) : []
+
+  if (isPending) return null
+  if (!session) return <Card className="border-primary/20 bg-card"><CardContent className="flex flex-col items-center gap-3 p-10 text-center"><h2 className="font-serif text-2xl font-semibold">Tus grupos están protegidos</h2><p className="max-w-md text-sm text-muted-foreground">Iniciá sesión para ver los grupos donde jugás. El leaderboard general permanece disponible para toda la mesa.</p><Link className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" href="/sign-in">Iniciar sesión</Link></CardContent></Card>
 
   return (
     <div className="flex flex-col gap-5">
@@ -24,7 +31,7 @@ export function GroupsPanel({ onOpenGroup }: { onOpenGroup: (id: string) => void
         <CreateGroupDialog onCreated={onOpenGroup} />
       </div>
 
-      {groups.length === 0 ? (
+      {visibleGroups.length === 0 ? (
         <Empty className="rounded-xl border border-dashed border-border bg-card/50 py-12">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -38,7 +45,7 @@ export function GroupsPanel({ onOpenGroup }: { onOpenGroup: (id: string) => void
         </Empty>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {groups.map((group) => {
+          {visibleGroups.map((group) => {
             const members = players.filter((p) => p.groupId === group.id)
             const gameCount = games.filter((g) => g.groupId === group.id).length
             const matchCount = matches.filter((m) => m.groupId === group.id).length
