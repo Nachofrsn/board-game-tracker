@@ -102,7 +102,7 @@ export function RecordMatchDialog({ groupId }: { groupId: string }) {
           <FieldGroup>
             <Field>
               <FieldLabel>Juego</FieldLabel>
-              <Select value={gameId} onValueChange={setGameId}>
+              <Select value={gameId} onValueChange={(value) => setGameId(value ?? '')}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Elegí un juego" />
                 </SelectTrigger>
@@ -146,7 +146,7 @@ export function RecordMatchDialog({ groupId }: { groupId: string }) {
                 <Crown className="size-4 text-accent" />
                 Ganador
               </FieldLabel>
-              <Select value={winnerId} onValueChange={setWinnerId} disabled={winnerCandidates.length === 0}>
+              <Select value={winnerId} onValueChange={(value) => setWinnerId(value ?? '')} disabled={winnerCandidates.length === 0}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="¿Quién ganó?" />
                 </SelectTrigger>
