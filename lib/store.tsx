@@ -113,6 +113,22 @@ const StoreContext = React.createContext<StoreValue | null>(null)
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<State>(() => seed())
+  const hydrated = React.useRef(false)
+
+  React.useEffect(() => {
+    fetch('/api/board').then((r) => r.ok ? r.json() : null).then((data) => {
+      if (!data || hydrated.current) return
+      hydrated.current = true
+      if (data.groups.length || data.games.length || data.matches.length) setState({
+        groups: data.groups.map((g: any) => ({ id: g.id, name: g.name, createdAt: g.createdAt ?? g.created_at })),
+        players: data.players.map((p: any) => ({ id: p.id, groupId: data.groupPlayers.find((x: any) => x.playerId === p.id)?.groupId ?? data.groupPlayers.find((x: any) => x.player_id === p.id)?.group_id ?? '', name: p.name })),
+        games: data.games.map((g: any) => ({ id: g.id, groupId: data.groupGames.find((x: any) => x.gameId === g.id)?.groupId, name: g.name, photoUrl: g.imageUrl ?? g.image_url, category: g.description })),
+        matches: data.matches.map((m: any) => ({ id: m.id, groupId: m.groupId ?? m.group_id, gameId: m.gameId ?? m.game_id, winnerId: m.winnerId ?? m.winner_id, durationMinutes: m.durationMinutes ?? m.duration_minutes, playedAt: m.playedAt ?? m.played_at, playerIds: data.matchPlayers.filter((x: any) => x.matchId === m.id).map((x: any) => x.playerId) })),
+      })
+    }).catch(() => { hydrated.current = true })
+  }, [])
+
+  const persist = React.useCallback((payload: unknown) => { fetch('/api/board', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => {}) }, [])
 
   const value = React.useMemo<StoreValue>(() => {
     return {
@@ -128,11 +144,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .map((n) => n.trim())
           .filter(Boolean)
           .map((n) => ({ id: 'p-' + uid(), groupId: id, name: n }))
-        setState((s) => ({
-          ...s,
-          groups: [...s.groups, group],
-          players: [...s.players, ...players],
-        }))
+        setState((s) => ({ ...s, groups: [...s.groups, group], players: [...s.players, ...players] }))
+        persist({ type: 'group', id, group: { id, name: group.name, color: 'amber', description: null }, players: players.map((p) => ({ id: p.id, name: p.name, initials: p.name.slice(0, 2).toUpperCase(), color: 'amber' })) })
         return id
       },
       deleteGroup(groupId) {
@@ -146,6 +159,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addPlayer(groupId, name) {
         const player: Player = { id: 'p-' + uid(), groupId, name: name.trim() }
         setState((s) => ({ ...s, players: [...s.players, player] }))
+        persist({ type: 'player', id: player.id, groupId, player: { id: player.id, name: player.name, initials: player.name.slice(0, 2).toUpperCase(), color: 'amber' } })
       },
       removePlayer(playerId) {
         setState((s) => ({ ...s, players: s.players.filter((p) => p.id !== playerId) }))
@@ -153,6 +167,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addGame(game) {
         const full: Game = { ...game, id: 'game-' + uid() }
         setState((s) => ({ ...s, games: [...s.games, full] }))
+        persist({ type: 'game', id: full.id, groupId: full.groupId, game: { id: full.id, name: full.name, description: full.category ?? null, imageUrl: full.photoUrl ?? null, color: 'amber' } })
       },
       deleteGame(gameId) {
         setState((s) => ({
@@ -164,12 +179,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addMatch(match) {
         const full: Match = { ...match, id: 'm-' + uid() }
         setState((s) => ({ ...s, matches: [...s.matches, full] }))
+        persist({ type: 'match', id: full.id, match: { id: full.id, groupId: full.groupId, gameId: full.gameId, winnerId: full.winnerId, durationMinutes: full.durationMinutes, playedAt: new Date(full.playedAt) }, playerIds: full.playerIds })
       },
       deleteMatch(matchId) {
         setState((s) => ({ ...s, matches: s.matches.filter((m) => m.id !== matchId) }))
       },
     }
-  }, [state])
+  }, [state, persist])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }
