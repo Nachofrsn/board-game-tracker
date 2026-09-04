@@ -21,81 +21,11 @@ type State = {
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
-function seed(): State {
-  const jelium: Group = { id: 'g-jelium', name: 'Jelium', createdAt: '2024-11-02' }
-  const nomades: Group = { id: 'g-nomades', name: 'Nómades', createdAt: '2025-01-15' }
-
-  const nacho: Player = { id: 'p-nacho', groupId: jelium.id, name: 'Nacho' }
-  const gonzo: Player = { id: 'p-gonzo', groupId: jelium.id, name: 'Gonzo' }
-  const renzo: Player = { id: 'p-renzo', groupId: jelium.id, name: 'Renzo' }
-  const lucia: Player = { id: 'p-lucia', groupId: nomades.id, name: 'Lucía' }
-  const mateo: Player = { id: 'p-mateo', groupId: nomades.id, name: 'Mateo' }
-
-  const colonos: Game = {
-    id: 'game-colonos',
-    groupId: jelium.id,
-    name: 'Colonos del Valle',
-    photoUrl: '/games/colonos.png',
-    category: 'Estrategia',
-    suggestedMinutes: 75,
-  }
-  const murallas: Game = {
-    id: 'game-murallas',
-    groupId: jelium.id,
-    name: 'Murallas de Piedra',
-    photoUrl: '/games/murallas.png',
-    category: 'Colocación de losetas',
-    suggestedMinutes: 45,
-  }
-  const dados: Game = {
-    id: 'game-dados',
-    groupId: nomades.id,
-    name: 'Dados de Oro',
-    photoUrl: '/games/dados-de-oro.png',
-    category: 'Dados y azar',
-    suggestedMinutes: 30,
-  }
-
-  const players = [nacho, gonzo, renzo]
-  const mk = (
-    gameId: string,
-    groupId: string,
-    playedAt: string,
-    durationMinutes: number,
-    winnerId: string,
-    playerIds: string[],
-  ): Match => ({
-    id: uid(),
-    groupId,
-    gameId,
-    playedAt,
-    durationMinutes,
-    winnerId,
-    playerIds,
-  })
-
-  const jp = [nacho.id, gonzo.id, renzo.id]
-
-  const matches: Match[] = [
-    mk(colonos.id, jelium.id, '2024-11-10', 82, nacho.id, jp),
-    mk(colonos.id, jelium.id, '2024-11-24', 70, gonzo.id, jp),
-    mk(colonos.id, jelium.id, '2024-12-08', 95, nacho.id, jp),
-    mk(murallas.id, jelium.id, '2024-12-15', 40, renzo.id, jp),
-    mk(murallas.id, jelium.id, '2025-01-05', 52, gonzo.id, jp),
-    mk(murallas.id, jelium.id, '2025-01-19', 48, nacho.id, jp),
-    mk(colonos.id, jelium.id, '2025-02-02', 88, renzo.id, jp),
-    mk(murallas.id, jelium.id, '2025-02-16', 44, gonzo.id, jp),
-    mk(dados.id, nomades.id, '2025-02-01', 28, lucia.id, [lucia.id, mateo.id]),
-    mk(dados.id, nomades.id, '2025-02-20', 33, mateo.id, [lucia.id, mateo.id]),
-    mk(dados.id, nomades.id, '2025-03-05', 25, lucia.id, [lucia.id, mateo.id]),
-  ]
-
-  return {
-    groups: [jelium, nomades],
-    players: [...players, lucia, mateo],
-    games: [colonos, murallas, dados],
-    matches,
-  }
+const emptyState: State = {
+  groups: [],
+  players: [],
+  games: [],
+  matches: [],
 }
 
 type StoreValue = State & {
@@ -112,23 +42,58 @@ type StoreValue = State & {
 const StoreContext = React.createContext<StoreValue | null>(null)
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = React.useState<State>(() => seed())
+  const [state, setState] = React.useState<State>(() => emptyState)
   const hydrated = React.useRef(false)
 
   React.useEffect(() => {
-    fetch('/api/board').then((r) => r.ok ? r.json() : null).then((data) => {
-      if (!data || hydrated.current) return
-      hydrated.current = true
-      if (data.groups.length || data.games.length || data.matches.length) setState({
-        groups: data.groups.map((g: any) => ({ id: g.id, name: g.name, createdAt: g.createdAt ?? g.created_at })),
-        players: data.players.map((p: any) => ({ id: p.id, groupId: data.groupPlayers.find((x: any) => x.playerId === p.id)?.groupId ?? data.groupPlayers.find((x: any) => x.player_id === p.id)?.group_id ?? '', name: p.name })),
-        games: data.games.map((g: any) => ({ id: g.id, groupId: data.groupGames.find((x: any) => x.gameId === g.id)?.groupId, name: g.name, photoUrl: g.imageUrl ?? g.image_url, category: g.description })),
-        matches: data.matches.map((m: any) => ({ id: m.id, groupId: m.groupId ?? m.group_id, gameId: m.gameId ?? m.game_id, winnerId: m.winnerId ?? m.winner_id, durationMinutes: m.durationMinutes ?? m.duration_minutes, playedAt: m.playedAt ?? m.played_at, playerIds: data.matchPlayers.filter((x: any) => x.matchId === m.id).map((x: any) => x.playerId) })),
+    fetch('/api/board')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data || hydrated.current) return
+        hydrated.current = true
+        if (Array.isArray(data.groups)) {
+          setState({
+            groups: (data.groups ?? []).map((g: any) => ({
+              id: g.id,
+              name: g.name,
+              createdAt: g.createdAt ?? g.created_at,
+            })),
+            players: (data.players ?? []).map((p: any) => ({
+              id: p.id,
+              groupId:
+                data.groupPlayers?.find((x: any) => x.playerId === p.id)?.groupId ??
+                data.groupPlayers?.find((x: any) => x.player_id === p.id)?.group_id ??
+                '',
+              name: p.name,
+            })),
+            games: (data.games ?? []).map((g: any) => ({
+              id: g.id,
+              groupId: data.groupGames?.find((x: any) => x.gameId === g.id)?.groupId,
+              name: g.name,
+              photoUrl: g.imageUrl ?? g.image_url,
+              category: g.description,
+            })),
+            matches: (data.matches ?? []).map((m: any) => ({
+              id: m.id,
+              groupId: m.groupId ?? m.group_id,
+              gameId: m.gameId ?? m.game_id,
+              winnerId: m.winnerId ?? m.winner_id,
+              durationMinutes: m.durationMinutes ?? m.duration_minutes,
+              playedAt: m.playedAt ?? m.played_at,
+              playerIds: (data.matchPlayers ?? [])
+                .filter((x: any) => x.matchId === m.id)
+                .map((x: any) => x.playerId),
+            })),
+          })
+        }
       })
-    }).catch(() => { hydrated.current = true })
+      .catch(() => {
+        hydrated.current = true
+      })
   }, [])
 
   const persist = React.useCallback((payload: unknown) => { fetch('/api/board', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => {}) }, [])
+  const remove = React.useCallback((type: 'group' | 'game' | 'match', id: string) => { fetch('/api/board', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, id }) }).catch(() => {}) }, [])
 
   const value = React.useMemo<StoreValue>(() => {
     return {
@@ -155,6 +120,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           games: s.games.filter((g) => g.groupId !== groupId),
           matches: s.matches.filter((m) => m.groupId !== groupId),
         }))
+        remove('group', groupId)
       },
       addPlayer(groupId, name) {
         const player: Player = { id: 'p-' + uid(), groupId, name: name.trim() }
@@ -175,6 +141,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           games: s.games.filter((g) => g.id !== gameId),
           matches: s.matches.filter((m) => m.gameId !== gameId),
         }))
+        remove('game', gameId)
       },
       addMatch(match) {
         const full: Match = { ...match, id: 'm-' + uid() }
@@ -183,9 +150,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       },
       deleteMatch(matchId) {
         setState((s) => ({ ...s, matches: s.matches.filter((m) => m.id !== matchId) }))
+        remove('match', matchId)
       },
     }
-  }, [state, persist])
+  }, [state, persist, remove])
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

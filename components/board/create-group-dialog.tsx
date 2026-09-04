@@ -16,16 +16,24 @@ import {
 } from '@/components/ui/dialog'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { useStore } from '@/lib/store'
+import { authClient } from '@/lib/auth-client'
 
 export function CreateGroupDialog({ onCreated }: { onCreated?: (id: string) => void }) {
   const { addGroup } = useStore()
+  const { data: session } = authClient.useSession()
   const [open, setOpen] = React.useState(false)
   const [name, setName] = React.useState('')
   const [players, setPlayers] = React.useState<string[]>(['', '', ''])
 
+  React.useEffect(() => {
+    if (session?.user?.name) {
+      setPlayers((prev) => [session.user.name, prev[1] || '', prev[2] || ''])
+    }
+  }, [session?.user?.name, open])
+
   function reset() {
     setName('')
-    setPlayers(['', '', ''])
+    setPlayers([session?.user?.name || '', '', ''])
   }
 
   function submit(e: React.FormEvent) {

@@ -23,7 +23,7 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
       : await authClient.signIn.email({ email, password })
     setLoading(false)
     if (result.error) { setError('No pudimos completar la operación. Revisá tus datos e intentá de nuevo.'); return }
-    router.push('/'); router.refresh()
+    window.location.href = '/'
   }
 
   return <form onSubmit={submit} className="flex flex-col gap-5">

@@ -26,9 +26,38 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const { type, id } = await request.json()
-  if (type === 'group') await db.delete(boardGroups).where(eq(boardGroups.id, id))
-  if (type === 'game') await db.delete(boardGames).where(eq(boardGames.id, id))
-  if (type === 'match') await db.delete(boardMatches).where(eq(boardMatches.id, id))
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await request.json().catch(() => ({}))
+  const { type, id } = body
+  if (!id || typeof id !== 'string' || !['group', 'game', 'match'].includes(type)) {
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
+  }
+
+  if (type === 'group') {
+    await db.delete(boardGroupPlayers).where(eq(boardGroupPlayers.groupId, id))
+    await db.delete(boardGroupGames).where(eq(boardGroupGames.groupId, id))
+    const matches = await db.select({ id: boardMatches.id }).from(boardMatches).where(eq(boardMatches.groupId, id))
+    for (const m of matches) {
+      await db.delete(boardMatchPlayers).where(eq(boardMatchPlayers.matchId, m.id))
+    }
+    await db.delete(boardMatches).where(eq(boardMatches.groupId, id))
+    await db.delete(boardGroups).where(eq(boardGroups.id, id))
+  }
+  if (type === 'game') {
+    await db.delete(boardGroupGames).where(eq(boardGroupGames.gameId, id))
+    const matches = await db.select({ id: boardMatches.id }).from(boardMatches).where(eq(boardMatches.gameId, id))
+    for (const m of matches) {
+      await db.delete(boardMatchPlayers).where(eq(boardMatchPlayers.matchId, m.id))
+    }
+    await db.delete(boardMatches).where(eq(boardMatches.gameId, id))
+    await db.delete(boardGames).where(eq(boardGames.id, id))
+  }
+  if (type === 'match') {
+    await db.delete(boardMatchPlayers).where(eq(boardMatchPlayers.matchId, id))
+    await db.delete(boardMatches).where(eq(boardMatches.id, id))
+  }
+
   return NextResponse.json({ ok: true })
 }

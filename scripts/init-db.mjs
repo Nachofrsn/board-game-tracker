@@ -1,0 +1,129 @@
+import pg from 'pg'
+const { Pool } = pg
+
+const connectionString = process.env.DATABASE_URL
+if (!connectionString) {
+  console.error('❌ Error: Falta definir DATABASE_URL en .env')
+  process.exit(1)
+}
+
+const pool = new Pool({ connectionString })
+
+const sql = `
+-- Better Auth tables
+CREATE TABLE IF NOT EXISTS "user" (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  "emailVerified" BOOLEAN NOT NULL DEFAULT FALSE,
+  image TEXT,
+  "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS session (
+  id TEXT PRIMARY KEY,
+  "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "ipAddress" TEXT,
+  "userAgent" TEXT,
+  "userId" TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS account (
+  id TEXT PRIMARY KEY,
+  "accountId" TEXT NOT NULL,
+  "providerId" TEXT NOT NULL,
+  "userId" TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  "accessToken" TEXT,
+  "refreshToken" TEXT,
+  "idToken" TEXT,
+  "accessTokenExpiresAt" TIMESTAMP WITH TIME ZONE,
+  "refreshTokenExpiresAt" TIMESTAMP WITH TIME ZONE,
+  "scope" TEXT,
+  password TEXT,
+  "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS verification (
+  id TEXT PRIMARY KEY,
+  identifier TEXT NOT NULL,
+  value TEXT NOT NULL,
+  "expiresAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+  "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- Board game tracker tables
+CREATE TABLE IF NOT EXISTS board_groups (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  color TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS board_players (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  initials TEXT NOT NULL,
+  color TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS board_group_players (
+  group_id TEXT NOT NULL,
+  player_id TEXT NOT NULL,
+  PRIMARY KEY (group_id, player_id)
+);
+
+CREATE TABLE IF NOT EXISTS board_games (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  image_url TEXT,
+  color TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS board_group_games (
+  group_id TEXT NOT NULL,
+  game_id TEXT NOT NULL,
+  PRIMARY KEY (group_id, game_id)
+);
+
+CREATE TABLE IF NOT EXISTS board_matches (
+  id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL,
+  game_id TEXT NOT NULL,
+  winner_id TEXT NOT NULL,
+  duration_minutes INTEGER NOT NULL,
+  played_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS board_match_players (
+  match_id TEXT NOT NULL,
+  player_id TEXT NOT NULL,
+  PRIMARY KEY (match_id, player_id)
+);
+`
+
+async function main() {
+  console.log('⏳ Conectando a PostgreSQL y creando tablas...')
+  const client = await pool.connect()
+  try {
+    await client.query(sql)
+    console.log('✅ Todas las tablas se crearon correctamente.')
+  } catch (err) {
+    console.error('❌ Error ejecutando migración:', err.message)
+    process.exit(1)
+  } finally {
+    client.release()
+    await pool.end()
+  }
+}
+
+main()
