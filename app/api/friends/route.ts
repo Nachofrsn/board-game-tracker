@@ -11,114 +11,84 @@ export async function GET() {
 
   const currentUserId = session.user.id
 
-  // 1. Get accepted friendships
-  const acceptedRows = await db
-    .select()
-    .from(userFriendships)
-    .where(
-      and(
-        eq(userFriendships.status, 'accepted'),
-        or(eq(userFriendships.userId, currentUserId), eq(userFriendships.friendId, currentUserId))
-      )
-    )
+  const [friendsList, incoming, outgoing] = await Promise.all([
+    // 1. Get accepted friends
+    (async () => {
+      const acceptedRows = await db
+        .select({
+          userId: userFriendships.userId,
+          friendId: userFriendships.friendId,
+        })
+        .from(userFriendships)
+        .where(
+          and(
+            eq(userFriendships.status, 'accepted'),
+            or(eq(userFriendships.userId, currentUserId), eq(userFriendships.friendId, currentUserId))
+          )
+        )
 
-  const friendIds = acceptedRows.map((r) => (r.userId === currentUserId ? r.friendId : r.userId))
+      const friendIds = acceptedRows.map((r) => (r.userId === currentUserId ? r.friendId : r.userId))
+      if (friendIds.length === 0) return []
 
-  let friendsList: Array<{ id: string; name: string; username: string | null; email: string; image: string | null }> = []
-  if (friendIds.length > 0) {
-    friendsList = await db
+      return db
+        .select({
+          id: users.id,
+          name: users.name,
+          username: users.username,
+          email: users.email,
+          image: users.image,
+        })
+        .from(users)
+        .where(inArray(users.id, friendIds))
+    })(),
+
+    // 2. Incoming pending requests (joined with sender user profile in 1 query)
+    db
       .select({
-        id: users.id,
-        name: users.name,
-        username: users.username,
-        email: users.email,
-        image: users.image,
+        id: userFriendships.id,
+        createdAt: userFriendships.createdAt,
+        user: {
+          id: users.id,
+          name: users.name,
+          username: users.username,
+          email: users.email,
+          image: users.image,
+        },
       })
-      .from(users)
-      .where(inArray(users.id, friendIds))
-  }
+      .from(userFriendships)
+      .innerJoin(users, eq(userFriendships.userId, users.id))
+      .where(and(eq(userFriendships.friendId, currentUserId), eq(userFriendships.status, 'pending'))),
 
-  // 2. Incoming pending requests
-  const incomingRows = await db
-    .select({
-      id: userFriendships.id,
-      createdAt: userFriendships.createdAt,
-      senderId: userFriendships.userId,
-    })
-    .from(userFriendships)
-    .where(and(eq(userFriendships.friendId, currentUserId), eq(userFriendships.status, 'pending')))
-
-  let incoming: Array<{ id: string; createdAt: Date; user: { id: string; name: string; username: string | null; email: string; image: string | null } }> = []
-  if (incomingRows.length > 0) {
-    const senderIds = incomingRows.map((r) => r.senderId)
-    const senders = await db
+    // 3. Outgoing pending requests (joined with target user profile in 1 query)
+    db
       .select({
-        id: users.id,
-        name: users.name,
-        username: users.username,
-        email: users.email,
-        image: users.image,
+        id: userFriendships.id,
+        createdAt: userFriendships.createdAt,
+        user: {
+          id: users.id,
+          name: users.name,
+          username: users.username,
+          email: users.email,
+          image: users.image,
+        },
       })
-      .from(users)
-      .where(inArray(users.id, senderIds))
+      .from(userFriendships)
+      .innerJoin(users, eq(userFriendships.friendId, users.id))
+      .where(and(eq(userFriendships.userId, currentUserId), eq(userFriendships.status, 'pending'))),
+  ])
 
-    const senderMap = new Map(senders.map((s) => [s.id, s]))
-    incoming = incomingRows
-      .map((r) => {
-        const u = senderMap.get(r.senderId)
-        if (!u) return null
-        return {
-          id: r.id,
-          createdAt: r.createdAt,
-          user: u,
-        }
-      })
-      .filter((x): x is NonNullable<typeof x> => Boolean(x))
-  }
-
-  // 3. Outgoing pending requests
-  const outgoingRows = await db
-    .select({
-      id: userFriendships.id,
-      createdAt: userFriendships.createdAt,
-      targetId: userFriendships.friendId,
-    })
-    .from(userFriendships)
-    .where(and(eq(userFriendships.userId, currentUserId), eq(userFriendships.status, 'pending')))
-
-  let outgoing: Array<{ id: string; createdAt: Date; user: { id: string; name: string; username: string | null; email: string; image: string | null } }> = []
-  if (outgoingRows.length > 0) {
-    const targetIds = outgoingRows.map((r) => r.targetId)
-    const targets = await db
-      .select({
-        id: users.id,
-        name: users.name,
-        username: users.username,
-        email: users.email,
-        image: users.image,
-      })
-      .from(users)
-      .where(inArray(users.id, targetIds))
-
-    const targetMap = new Map(targets.map((t) => [t.id, t]))
-    outgoing = outgoingRows
-      .map((r) => {
-        const u = targetMap.get(r.targetId)
-        if (!u) return null
-        return {
-          id: r.id,
-          createdAt: r.createdAt,
-          user: u,
-        }
-      })
-      .filter((x): x is NonNullable<typeof x> => Boolean(x))
-  }
-
-  return NextResponse.json({
-    friends: friendsList,
-    incoming,
-    outgoing,
-  })
+  return NextResponse.json(
+    {
+      friends: friendsList,
+      incoming,
+      outgoing,
+    },
+    {
+      headers: {
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+      },
+    }
+  )
 }
 
 export async function POST(request: Request) {
@@ -154,8 +124,8 @@ export async function POST(request: Request) {
         .from(users)
         .where(
           or(
-            sql`LOWER(${users.username}) = LOWER(${targetUsername})`,
-            sql`LOWER(${users.name}) = LOWER(${targetUsername})`
+            eq(sql`LOWER(${users.username})`, targetUsername),
+            eq(sql`LOWER(${users.name})`, targetUsername)
           )
         )
         .limit(1)
@@ -167,8 +137,8 @@ export async function POST(request: Request) {
         .from(users)
         .where(
           or(
-            sql`LOWER(${users.email}) = LOWER(${clean})`,
-            sql`LOWER(${users.username}) = LOWER(${clean})`
+            eq(sql`LOWER(${users.email})`, clean),
+            eq(sql`LOWER(${users.username})`, clean)
           )
         )
         .limit(1)
@@ -185,7 +155,11 @@ export async function POST(request: Request) {
 
     // Check existing friendship
     const [existing] = await db
-      .select()
+      .select({
+        id: userFriendships.id,
+        userId: userFriendships.userId,
+        status: userFriendships.status,
+      })
       .from(userFriendships)
       .where(
         or(
@@ -244,7 +218,7 @@ export async function POST(request: Request) {
     if (!requestId) return NextResponse.json({ error: 'ID de solicitud faltante' }, { status: 400 })
 
     const [req] = await db
-      .select()
+      .select({ id: userFriendships.id })
       .from(userFriendships)
       .where(
         and(

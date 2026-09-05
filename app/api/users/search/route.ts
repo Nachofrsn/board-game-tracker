@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { users, userFriendships } from '@/lib/db/schema'
-import { sql, ne, and, or, eq } from 'drizzle-orm'
+import { sql, ne, and, or, eq, inArray } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 
@@ -17,6 +17,7 @@ export async function GET(request: Request) {
   }
 
   const currentUserId = session.user.id
+  const pattern = `%${q}%`
 
   // Search users matching name or username, excluding current user
   const foundUsers = await db
@@ -31,8 +32,8 @@ export async function GET(request: Request) {
       and(
         ne(users.id, currentUserId),
         or(
-          sql`LOWER(${users.name}) LIKE ${'%' + q + '%'}`,
-          sql`LOWER(${users.username}) LIKE ${'%' + q + '%'}`
+          sql`LOWER(${users.name}) LIKE ${pattern}`,
+          sql`LOWER(${users.username}) LIKE ${pattern}`
         )
       )
     )
@@ -45,12 +46,17 @@ export async function GET(request: Request) {
   // Check friendship status for each found user
   const userIds = foundUsers.map((u) => u.id)
   const existingFriendships = await db
-    .select()
+    .select({
+      id: userFriendships.id,
+      userId: userFriendships.userId,
+      friendId: userFriendships.friendId,
+      status: userFriendships.status,
+    })
     .from(userFriendships)
     .where(
       or(
-        and(eq(userFriendships.userId, currentUserId), sql`${userFriendships.friendId} IN ${userIds}`),
-        and(eq(userFriendships.friendId, currentUserId), sql`${userFriendships.userId} IN ${userIds}`)
+        and(eq(userFriendships.userId, currentUserId), inArray(userFriendships.friendId, userIds)),
+        and(eq(userFriendships.friendId, currentUserId), inArray(userFriendships.userId, userIds))
       )
     )
 
@@ -80,5 +86,13 @@ export async function GET(request: Request) {
     }
   })
 
-  return NextResponse.json({ users: result })
+  return NextResponse.json(
+    { users: result },
+    {
+      headers: {
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+      },
+    }
+  )
 }
+

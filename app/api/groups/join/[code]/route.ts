@@ -24,26 +24,16 @@ export async function GET(
     return NextResponse.json({ error: 'Invitación no válida o expirada' }, { status: 404 })
   }
 
-  // Get creator info
-  let creatorName: string | null = null
-  if (group.createdBy) {
-    const [creator] = await db
-      .select({ name: users.name })
-      .from(users)
-      .where(eq(users.id, group.createdBy))
-      .limit(1)
-    if (creator) creatorName = creator.name
-  }
-
-  // Get members
-  const memberLinks = await db
-    .select()
-    .from(boardGroupPlayers)
-    .where(eq(boardGroupPlayers.groupId, group.id))
-
-  let members: Array<{ id: string; name: string; initials: string; color: string; userId: string | null }> = []
-  if (memberLinks.length > 0) {
-    members = await db
+  // Fetch creator, members with join, and session in parallel
+  const [creatorRes, members, session] = await Promise.all([
+    group.createdBy
+      ? db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, group.createdBy))
+          .limit(1)
+      : Promise.resolve([]),
+    db
       .select({
         id: boardPlayers.id,
         name: boardPlayers.name,
@@ -51,37 +41,52 @@ export async function GET(
         color: boardPlayers.color,
         userId: boardPlayers.userId,
       })
-      .from(boardPlayers)
-      .where(inArray(boardPlayers.id, memberLinks.map((m) => m.playerId)))
-  }
+      .from(boardGroupPlayers)
+      .innerJoin(boardPlayers, eq(boardGroupPlayers.playerId, boardPlayers.id))
+      .where(eq(boardGroupPlayers.groupId, group.id)),
+    auth.api.getSession({ headers: await headers() }),
+  ])
 
-  // Check current session
-  const session = await auth.api.getSession({ headers: await headers() })
+  const creatorName = creatorRes[0]?.name ?? null
   let isMember = false
 
   if (session?.user) {
+    const currentUserId = session.user.id
+    const currentUserNameLower = session.user.name?.toLowerCase()
     isMember = members.some(
       (m) =>
-        m.userId === session.user.id ||
-        m.name.toLowerCase() === session.user.name.toLowerCase()
+        m.userId === currentUserId ||
+        (currentUserNameLower && m.name.toLowerCase() === currentUserNameLower)
     )
   }
 
-  return NextResponse.json({
-    group: {
-      id: group.id,
-      name: group.name,
-      description: group.description,
-      color: group.color,
+  return NextResponse.json(
+    {
+      group: {
+        id: group.id,
+        name: group.name,
+        description: group.description,
+        color: group.color,
+      },
+      creatorName,
+      members,
+      isMember,
+      isLoggedIn: Boolean(session?.user),
+      currentUser: session?.user
+        ? {
+            id: session.user.id,
+            name: session.user.name,
+            username: (session.user as any).username || null,
+            email: session.user.email,
+          }
+        : null,
     },
-    creatorName,
-    members,
-    isMember,
-    isLoggedIn: Boolean(session?.user),
-    currentUser: session?.user
-      ? { id: session.user.id, name: session.user.name, username: (session.user as any).username || null, email: session.user.email }
-      : null,
-  })
+    {
+      headers: {
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+      },
+    }
+  )
 }
 
 export async function POST(
@@ -102,7 +107,7 @@ export async function POST(
   }
 
   const [group] = await db
-    .select()
+    .select({ id: boardGroups.id })
     .from(boardGroups)
     .where(eq(boardGroups.inviteCode, code))
     .limit(1)
@@ -111,54 +116,46 @@ export async function POST(
     return NextResponse.json({ error: 'Grupo no encontrado' }, { status: 404 })
   }
 
-  // Check if player is already member
-  const memberLinks = await db
-    .select()
+  // Check if player is already member using a single JOIN query
+  const [existing] = await db
+    .select({ id: boardPlayers.id, userId: boardPlayers.userId })
     .from(boardGroupPlayers)
-    .where(eq(boardGroupPlayers.groupId, group.id))
-
-  let existingPlayerId: string | null = null
-
-  if (memberLinks.length > 0) {
-    const playerIds = memberLinks.map((m) => m.playerId)
-    const [existing] = await db
-      .select()
-      .from(boardPlayers)
-      .where(
-        and(
-          inArray(boardPlayers.id, playerIds),
-          or(
-            eq(boardPlayers.userId, session.user.id),
-            sql`LOWER(${boardPlayers.name}) = LOWER(${session.user.name})`
-          )
+    .innerJoin(boardPlayers, eq(boardGroupPlayers.playerId, boardPlayers.id))
+    .where(
+      and(
+        eq(boardGroupPlayers.groupId, group.id),
+        or(
+          eq(boardPlayers.userId, session.user.id),
+          sql`LOWER(${boardPlayers.name}) = LOWER(${session.user.name})`
         )
       )
-      .limit(1)
+    )
+    .limit(1)
 
-    if (existing) {
-      existingPlayerId = existing.id
-      if (!existing.userId) {
-        await db.update(boardPlayers).set({ userId: session.user.id }).where(eq(boardPlayers.id, existing.id))
-      }
-      return NextResponse.json({ ok: true, alreadyMember: true, groupId: group.id })
+  if (existing) {
+    if (!existing.userId) {
+      await db.update(boardPlayers).set({ userId: session.user.id }).where(eq(boardPlayers.id, existing.id))
     }
+    return NextResponse.json({ ok: true, alreadyMember: true, groupId: group.id })
   }
 
-  // Create new player for this group
+  // Create new player for this group in a transaction
   const newPlayerId = 'p-' + Math.random().toString(36).slice(2, 10)
   const initials = (session.user.name || 'PL').slice(0, 2).toUpperCase()
 
-  await db.insert(boardPlayers).values({
-    id: newPlayerId,
-    name: session.user.name,
-    initials,
-    color: 'amber',
-    userId: session.user.id,
-  })
+  await db.transaction(async (tx) => {
+    await tx.insert(boardPlayers).values({
+      id: newPlayerId,
+      name: session.user.name,
+      initials,
+      color: 'amber',
+      userId: session.user.id,
+    })
 
-  await db.insert(boardGroupPlayers).values({
-    groupId: group.id,
-    playerId: newPlayerId,
+    await tx.insert(boardGroupPlayers).values({
+      groupId: group.id,
+      playerId: newPlayerId,
+    })
   })
 
   return NextResponse.json({ ok: true, alreadyMember: false, groupId: group.id })

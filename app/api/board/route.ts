@@ -24,16 +24,26 @@ export async function GET() {
     db.select().from(boardMatchPlayers),
   ])
 
-  // Ensure all groups have an invite_code
-  for (const g of groups) {
-    if (!g.inviteCode) {
-      const code = Math.random().toString(36).slice(2, 10)
-      await db.update(boardGroups).set({ inviteCode: code }).where(eq(boardGroups.id, g.id))
-      g.inviteCode = code
-    }
+  // Ensure all groups have an invite_code in parallel if any are missing
+  const missingInvite = groups.filter((g) => !g.inviteCode)
+  if (missingInvite.length > 0) {
+    await Promise.all(
+      missingInvite.map(async (g) => {
+        const code = Math.random().toString(36).slice(2, 10)
+        await db.update(boardGroups).set({ inviteCode: code }).where(eq(boardGroups.id, g.id))
+        g.inviteCode = code
+      })
+    )
   }
 
-  return NextResponse.json({ groups, players, groupPlayers, games, groupGames, matches, matchPlayers })
+  return NextResponse.json(
+    { groups, players, groupPlayers, games, groupGames, matches, matchPlayers },
+    {
+      headers: {
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+      },
+    }
+  )
 }
 
 export async function POST(request: Request) {
@@ -47,41 +57,60 @@ export async function POST(request: Request) {
 
   if (body.type === 'group') {
     const inviteCode = body.group.inviteCode || Math.random().toString(36).slice(2, 10)
-    await db.insert(boardGroups).values({
-      ...body.group,
-      createdBy: session.user.id,
-      inviteCode,
-    })
-    for (const player of body.players ?? []) {
-      const playerUserId =
-        player.userId ||
-        (player.name.toLowerCase() === session.user.name.toLowerCase() ? session.user.id : null)
-      await db.insert(boardPlayers).values({
-        ...player,
-        userId: playerUserId,
+    const rawPlayers: any[] = body.players ?? []
+
+    await db.transaction(async (tx) => {
+      await tx.insert(boardGroups).values({
+        ...body.group,
+        createdBy: session.user.id,
+        inviteCode,
       })
-      await db.insert(boardGroupPlayers).values({ groupId: id, playerId: player.id })
-    }
+
+      if (rawPlayers.length > 0) {
+        const playersToInsert = rawPlayers.map((player) => ({
+          ...player,
+          userId:
+            player.userId ||
+            (player.name.toLowerCase() === session.user.name.toLowerCase() ? session.user.id : null),
+        }))
+        const groupPlayersToInsert = rawPlayers.map((player) => ({
+          groupId: id,
+          playerId: player.id,
+        }))
+
+        await tx.insert(boardPlayers).values(playersToInsert)
+        await tx.insert(boardGroupPlayers).values(groupPlayersToInsert)
+      }
+    })
   }
 
   if (body.type === 'player') {
-    await db.insert(boardPlayers).values({
-      ...body.player,
-      userId: body.player.userId || null,
+    await db.transaction(async (tx) => {
+      await tx.insert(boardPlayers).values({
+        ...body.player,
+        userId: body.player.userId || null,
+      })
+      await tx.insert(boardGroupPlayers).values({ groupId: body.groupId, playerId: body.player.id })
     })
-    await db.insert(boardGroupPlayers).values({ groupId: body.groupId, playerId: body.player.id })
   }
 
   if (body.type === 'game') {
-    await db.insert(boardGames).values(body.game)
-    await db.insert(boardGroupGames).values({ groupId: body.groupId, gameId: id })
+    await db.transaction(async (tx) => {
+      await tx.insert(boardGames).values(body.game)
+      await tx.insert(boardGroupGames).values({ groupId: body.groupId, gameId: id })
+    })
   }
 
   if (body.type === 'match') {
-    await db.insert(boardMatches).values(body.match)
-    for (const playerId of body.playerIds ?? []) {
-      await db.insert(boardMatchPlayers).values({ matchId: id, playerId })
-    }
+    const playerIds: string[] = body.playerIds ?? []
+    await db.transaction(async (tx) => {
+      await tx.insert(boardMatches).values(body.match)
+      if (playerIds.length > 0) {
+        await tx.insert(boardMatchPlayers).values(
+          playerIds.map((playerId) => ({ matchId: id, playerId }))
+        )
+      }
+    })
   }
 
   return NextResponse.json({ ok: true })
@@ -104,7 +133,7 @@ export async function DELETE(request: Request) {
     }
 
     const memberLinks = await db
-      .select()
+      .select({ playerId: boardGroupPlayers.playerId })
       .from(boardGroupPlayers)
       .where(eq(boardGroupPlayers.groupId, id))
 
@@ -130,53 +159,50 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'No pertenecés a este grupo' }, { status: 403 })
     }
 
-    for (const player of matchingPlayers) {
-      await db
-        .delete(boardGroupPlayers)
-        .where(
-          and(
-            eq(boardGroupPlayers.groupId, id),
-            eq(boardGroupPlayers.playerId, player.id)
+    await db.transaction(async (tx) => {
+      if (matchingPlayers.length > 0) {
+        await tx
+          .delete(boardGroupPlayers)
+          .where(
+            and(
+              eq(boardGroupPlayers.groupId, id),
+              inArray(boardGroupPlayers.playerId, matchingPlayers.map((p) => p.id))
+            )
           )
-        )
-    }
-
-    const remainingLinks = await db
-      .select()
-      .from(boardGroupPlayers)
-      .where(eq(boardGroupPlayers.groupId, id))
-
-    if (remainingLinks.length === 0) {
-      // If no members left in group, clean up completely
-      await db.delete(boardGroupGames).where(eq(boardGroupGames.groupId, id))
-      const matches = await db
-        .select({ id: boardMatches.id })
-        .from(boardMatches)
-        .where(eq(boardMatches.groupId, id))
-      for (const m of matches) {
-        await db.delete(boardMatchPlayers).where(eq(boardMatchPlayers.matchId, m.id))
       }
-      await db.delete(boardMatches).where(eq(boardMatches.groupId, id))
-      await db.delete(boardGroups).where(eq(boardGroups.id, id))
-    } else if (isCreator) {
-      // Transfer group ownership to the first remaining member with a userId, or clear createdBy
-      const remainingPlayers = await db
-        .select()
-        .from(boardPlayers)
-        .where(inArray(boardPlayers.id, remainingLinks.map((r) => r.playerId)))
 
-      const nextCreator = remainingPlayers.find((p) => p.userId && p.userId !== session.user.id)
-      await db
-        .update(boardGroups)
-        .set({ createdBy: nextCreator?.userId || null })
-        .where(eq(boardGroups.id, id))
-    }
+      const remainingLinks = await tx
+        .select({ playerId: boardGroupPlayers.playerId })
+        .from(boardGroupPlayers)
+        .where(eq(boardGroupPlayers.groupId, id))
+
+      if (remainingLinks.length === 0) {
+        // Cascades automatically clean up matches, games, and match players
+        await tx.delete(boardGroups).where(eq(boardGroups.id, id))
+      } else if (isCreator) {
+        // Transfer group ownership to the first remaining member with a userId, or clear createdBy
+        const remainingPlayers = await tx
+          .select({ id: boardPlayers.id, userId: boardPlayers.userId })
+          .from(boardPlayers)
+          .where(inArray(boardPlayers.id, remainingLinks.map((r) => r.playerId)))
+
+        const nextCreator = remainingPlayers.find((p) => p.userId && p.userId !== session.user.id)
+        await tx
+          .update(boardGroups)
+          .set({ createdBy: nextCreator?.userId || null })
+          .where(eq(boardGroups.id, id))
+      }
+    })
 
     return NextResponse.json({ ok: true })
   }
 
   if (type === 'group') {
-    const [group] = await db.select().from(boardGroups).where(eq(boardGroups.id, id))
+    const [group] = await db
+      .select({ id: boardGroups.id, createdBy: boardGroups.createdBy })
+      .from(boardGroups)
+      .where(eq(boardGroups.id, id))
+
     if (!group) {
       return NextResponse.json({ error: 'Grupo no encontrado' }, { status: 404 })
     }
@@ -189,30 +215,20 @@ export async function DELETE(request: Request) {
       )
     }
 
-    await db.delete(boardGroupPlayers).where(eq(boardGroupPlayers.groupId, id))
-    await db.delete(boardGroupGames).where(eq(boardGroupGames.groupId, id))
-    const matches = await db.select({ id: boardMatches.id }).from(boardMatches).where(eq(boardMatches.groupId, id))
-    for (const m of matches) {
-      await db.delete(boardMatchPlayers).where(eq(boardMatchPlayers.matchId, m.id))
-    }
-    await db.delete(boardMatches).where(eq(boardMatches.groupId, id))
+    // ON DELETE CASCADE automatically removes group relations, matches, and match players in 1 query
     await db.delete(boardGroups).where(eq(boardGroups.id, id))
   }
 
   if (type === 'game') {
-    await db.delete(boardGroupGames).where(eq(boardGroupGames.gameId, id))
-    const matches = await db.select({ id: boardMatches.id }).from(boardMatches).where(eq(boardMatches.gameId, id))
-    for (const m of matches) {
-      await db.delete(boardMatchPlayers).where(eq(boardMatchPlayers.matchId, m.id))
-    }
-    await db.delete(boardMatches).where(eq(boardMatches.gameId, id))
+    // ON DELETE CASCADE automatically removes group_games and associated matches
     await db.delete(boardGames).where(eq(boardGames.id, id))
   }
 
   if (type === 'match') {
-    await db.delete(boardMatchPlayers).where(eq(boardMatchPlayers.matchId, id))
+    // ON DELETE CASCADE automatically removes match_players
     await db.delete(boardMatches).where(eq(boardMatches.id, id))
   }
 
   return NextResponse.json({ ok: true })
 }
+

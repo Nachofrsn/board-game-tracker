@@ -16,27 +16,31 @@ export async function GET(
 
   const cleanUsername = decodeURIComponent(username).trim().toLowerCase()
 
-  const [inviter] = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      username: users.username,
-      image: users.image,
-    })
-    .from(users)
-    .where(
-      or(
-        sql`LOWER(${users.username}) = LOWER(${cleanUsername})`,
-        sql`LOWER(${users.id}) = LOWER(${cleanUsername})`
+  // Fetch inviter and session concurrently
+  const [inviterRes, session] = await Promise.all([
+    db
+      .select({
+        id: users.id,
+        name: users.name,
+        username: users.username,
+        image: users.image,
+      })
+      .from(users)
+      .where(
+        or(
+          eq(sql`LOWER(${users.username})`, cleanUsername),
+          eq(sql`LOWER(${users.id})`, cleanUsername)
+        )
       )
-    )
-    .limit(1)
+      .limit(1),
+    auth.api.getSession({ headers: await headers() }),
+  ])
 
+  const inviter = inviterRes[0]
   if (!inviter) {
     return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
   }
 
-  const session = await auth.api.getSession({ headers: await headers() })
   const currentUserId = session?.user?.id
 
   if (!currentUserId) {
@@ -65,7 +69,11 @@ export async function GET(
   }
 
   const [existing] = await db
-    .select()
+    .select({
+      id: userFriendships.id,
+      status: userFriendships.status,
+      userId: userFriendships.userId,
+    })
     .from(userFriendships)
     .where(
       or(
@@ -84,31 +92,30 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({
-    inviter,
-    isLoggedIn: true,
-    isSelf: false,
-    status,
-    currentUser: {
-      id: session.user.id,
-      name: session.user.name,
-      username: (session.user as any).username || null,
+  return NextResponse.json(
+    {
+      inviter,
+      isLoggedIn: true,
+      isSelf: false,
+      status,
+      currentUser: {
+        id: session.user.id,
+        name: session.user.name,
+        username: (session.user as any).username || null,
+      },
     },
-  })
+    {
+      headers: {
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+      },
+    }
+  )
 }
 
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ username: string }> }
 ) {
-  const session = await auth.api.getSession({ headers: await headers() })
-  if (!session?.user) {
-    return NextResponse.json(
-      { error: 'Iniciá sesión o registrate para agregar como amigo.' },
-      { status: 401 }
-    )
-  }
-
   const { username } = await params
   if (!username) {
     return NextResponse.json({ error: 'Usuario no especificado' }, { status: 400 })
@@ -116,21 +123,33 @@ export async function POST(
 
   const cleanUsername = decodeURIComponent(username).trim().toLowerCase()
 
-  const [inviter] = await db
-    .select({
-      id: users.id,
-      name: users.name,
-      username: users.username,
-    })
-    .from(users)
-    .where(
-      or(
-        sql`LOWER(${users.username}) = LOWER(${cleanUsername})`,
-        sql`LOWER(${users.id}) = LOWER(${cleanUsername})`
+  // Fetch session and inviter in parallel
+  const [session, inviterRes] = await Promise.all([
+    auth.api.getSession({ headers: await headers() }),
+    db
+      .select({
+        id: users.id,
+        name: users.name,
+        username: users.username,
+      })
+      .from(users)
+      .where(
+        or(
+          eq(sql`LOWER(${users.username})`, cleanUsername),
+          eq(sql`LOWER(${users.id})`, cleanUsername)
+        )
       )
-    )
-    .limit(1)
+      .limit(1),
+  ])
 
+  if (!session?.user) {
+    return NextResponse.json(
+      { error: 'Iniciá sesión o registrate para agregar como amigo.' },
+      { status: 401 }
+    )
+  }
+
+  const inviter = inviterRes[0]
   if (!inviter) {
     return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 })
   }
@@ -144,7 +163,10 @@ export async function POST(
   }
 
   const [existing] = await db
-    .select()
+    .select({
+      id: userFriendships.id,
+      status: userFriendships.status,
+    })
     .from(userFriendships)
     .where(
       or(
