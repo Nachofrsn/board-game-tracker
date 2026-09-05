@@ -34,6 +34,8 @@ import { Leaderboard } from '@/components/board/leaderboard'
 import { MatchHistory } from '@/components/board/match-history'
 import { AddGameDialog } from '@/components/board/add-game-dialog'
 import { RecordMatchDialog } from '@/components/board/record-match-dialog'
+import { DeleteGroupDialog } from '@/components/board/delete-group-dialog'
+import { LeaveGroupDialog } from '@/components/board/leave-group-dialog'
 import { useStore } from '@/lib/store'
 import { computePlayerStats } from '@/lib/stats'
 import { useFriends } from '@/lib/use-friends'
@@ -260,57 +262,8 @@ function InviteGroupDialog({ groupName, inviteCode }: { groupName: string; invit
   )
 }
 
-function DeleteGroupDialog({
-  groupName,
-  onConfirm,
-}: {
-  groupName: string
-  onConfirm: () => Promise<void>
-}) {
-  const [open, setOpen] = React.useState(false)
-  const [loading, setLoading] = React.useState(false)
-
-  async function handleDelete() {
-    setLoading(true)
-    await onConfirm()
-    setLoading(false)
-    setOpen(false)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5">
-            <Trash2 className="size-4" />
-            Borrar grupo
-          </Button>
-        }
-      />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="font-serif text-lg text-destructive">
-            ¿Eliminar el grupo &quot;{groupName}&quot;?
-          </DialogTitle>
-          <DialogDescription>
-            Esta acción es irreversible. Se eliminarán permanentemente todos los juegos asociados, las partidas registradas y las estadísticas del grupo para todos los miembros.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="mt-4 gap-2 sm:gap-0">
-          <Button variant="outline" disabled={loading} onClick={() => setOpen(false)}>
-            Cancelar
-          </Button>
-          <Button variant="destructive" disabled={loading} onClick={handleDelete}>
-            {loading ? 'Eliminando...' : 'Sí, eliminar grupo'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 export function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () => void }) {
-  const { groups, players, games, matches, deleteGroup } = useStore()
+  const { groups, players, games, matches } = useStore()
   const { data: session } = authClient.useSession()
   const group = groups.find((g) => g.id === groupId)
 
@@ -335,13 +288,6 @@ export function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () =
   const groupGames = games.filter((g) => g.groupId === groupId)
   const groupMatches = matches.filter((m) => m.groupId === groupId)
   const stats = computePlayerStats(players, matches, groups, groupId)
-
-  async function handleConfirmDelete() {
-    const ok = await deleteGroup(groupId)
-    if (ok) {
-      onBack()
-    }
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -377,10 +323,18 @@ export function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () =
             <AddPlayerDialog groupId={groupId} />
             <AddGameDialog groupId={groupId} />
             <RecordMatchDialog groupId={groupId} />
+            <LeaveGroupDialog
+              groupId={groupId}
+              groupName={group.name}
+              isCreator={isCreator}
+              memberCount={groupPlayers.length}
+              onSuccess={onBack}
+            />
             {isCreator && (
               <DeleteGroupDialog
+                groupId={groupId}
                 groupName={group.name}
-                onConfirm={handleConfirmDelete}
+                onSuccess={onBack}
               />
             )}
           </div>

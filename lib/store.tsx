@@ -35,6 +35,7 @@ export type PlayerInput = string | { name: string; userId?: string | null }
 type StoreValue = State & {
   addGroup: (name: string, players: PlayerInput[]) => string
   deleteGroup: (groupId: string) => Promise<boolean>
+  leaveGroup: (groupId: string) => Promise<boolean>
   addPlayer: (groupId: string, name: string, userId?: string | null) => void
   removePlayer: (playerId: string) => void
   addGame: (game: Omit<Game, 'id'>) => void
@@ -186,6 +187,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           return true
         } catch (err: any) {
           toast.error(err.message || 'Error al eliminar el grupo')
+          return false
+        }
+      },
+      async leaveGroup(groupId) {
+        try {
+          const res = await fetch('/api/board', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'leave-group', id: groupId }),
+          })
+          const data = await res.json().catch(() => ({}))
+          if (!res.ok) {
+            toast.error(data.error || 'No se pudo salir del grupo')
+            return false
+          }
+          await fetchData()
+          toast.success('Saliste del grupo exitosamente')
+          return true
+        } catch (err: any) {
+          toast.error(err.message || 'Error al salir del grupo')
           return false
         }
       },

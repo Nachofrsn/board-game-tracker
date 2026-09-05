@@ -9,7 +9,7 @@ import {
   boardMatches,
   boardMatchPlayers,
 } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and, or, sql, inArray } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { headers } from 'next/headers'
 
@@ -93,8 +93,86 @@ export async function DELETE(request: Request) {
 
   const body = await request.json().catch(() => ({}))
   const { type, id } = body
-  if (!id || typeof id !== 'string' || !['group', 'game', 'match'].includes(type)) {
+  if (!id || typeof id !== 'string' || !['group', 'game', 'match', 'leave-group'].includes(type)) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
+  }
+
+  if (type === 'leave-group') {
+    const [group] = await db.select().from(boardGroups).where(eq(boardGroups.id, id))
+    if (!group) {
+      return NextResponse.json({ error: 'Grupo no encontrado' }, { status: 404 })
+    }
+
+    const memberLinks = await db
+      .select()
+      .from(boardGroupPlayers)
+      .where(eq(boardGroupPlayers.groupId, id))
+
+    const isCreator = Boolean(group.createdBy && group.createdBy === session.user.id)
+
+    let matchingPlayers: Array<{ id: string }> = []
+    if (memberLinks.length > 0) {
+      matchingPlayers = await db
+        .select({ id: boardPlayers.id })
+        .from(boardPlayers)
+        .where(
+          and(
+            inArray(boardPlayers.id, memberLinks.map((m) => m.playerId)),
+            or(
+              eq(boardPlayers.userId, session.user.id),
+              sql`LOWER(${boardPlayers.name}) = LOWER(${session.user.name})`
+            )
+          )
+        )
+    }
+
+    if (matchingPlayers.length === 0 && !isCreator) {
+      return NextResponse.json({ error: 'No pertenecés a este grupo' }, { status: 403 })
+    }
+
+    for (const player of matchingPlayers) {
+      await db
+        .delete(boardGroupPlayers)
+        .where(
+          and(
+            eq(boardGroupPlayers.groupId, id),
+            eq(boardGroupPlayers.playerId, player.id)
+          )
+        )
+    }
+
+    const remainingLinks = await db
+      .select()
+      .from(boardGroupPlayers)
+      .where(eq(boardGroupPlayers.groupId, id))
+
+    if (remainingLinks.length === 0) {
+      // If no members left in group, clean up completely
+      await db.delete(boardGroupGames).where(eq(boardGroupGames.groupId, id))
+      const matches = await db
+        .select({ id: boardMatches.id })
+        .from(boardMatches)
+        .where(eq(boardMatches.groupId, id))
+      for (const m of matches) {
+        await db.delete(boardMatchPlayers).where(eq(boardMatchPlayers.matchId, m.id))
+      }
+      await db.delete(boardMatches).where(eq(boardMatches.groupId, id))
+      await db.delete(boardGroups).where(eq(boardGroups.id, id))
+    } else if (isCreator) {
+      // Transfer group ownership to the first remaining member with a userId, or clear createdBy
+      const remainingPlayers = await db
+        .select()
+        .from(boardPlayers)
+        .where(inArray(boardPlayers.id, remainingLinks.map((r) => r.playerId)))
+
+      const nextCreator = remainingPlayers.find((p) => p.userId && p.userId !== session.user.id)
+      await db
+        .update(boardGroups)
+        .set({ createdBy: nextCreator?.userId || null })
+        .where(eq(boardGroups.id, id))
+    }
+
+    return NextResponse.json({ ok: true })
   }
 
   if (type === 'group') {
