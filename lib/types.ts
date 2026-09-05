@@ -2,13 +2,31 @@ export type Player = {
   id: string
   groupId: string
   name: string
+  userId?: string | null
 }
 
 export type Group = {
   id: string
   name: string
   createdAt: string
+  createdBy?: string | null
+  inviteCode?: string | null
 }
+
+export type Friend = {
+  id: string
+  name: string
+  email: string
+  image?: string | null
+}
+
+export type FriendRequest = {
+  id: string
+  user: Friend
+  createdAt: string
+  type: 'incoming' | 'outgoing'
+}
+
 
 export type Game = {
   id: string

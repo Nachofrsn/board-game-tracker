@@ -45,8 +45,11 @@ CREATE TABLE IF NOT EXISTS account (
   "scope" TEXT,
   password TEXT,
   "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  issuer TEXT NOT NULL
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS "account_issuer_accountId_uidx" ON account (issuer, "accountId");
 
 CREATE TABLE IF NOT EXISTS verification (
   id TEXT PRIMARY KEY,
@@ -63,6 +66,8 @@ CREATE TABLE IF NOT EXISTS board_groups (
   name TEXT NOT NULL,
   description TEXT,
   color TEXT NOT NULL,
+  created_by TEXT REFERENCES "user"(id) ON DELETE SET NULL,
+  invite_code TEXT UNIQUE,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
@@ -71,6 +76,7 @@ CREATE TABLE IF NOT EXISTS board_players (
   name TEXT NOT NULL,
   initials TEXT NOT NULL,
   color TEXT NOT NULL,
+  user_id TEXT REFERENCES "user"(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
@@ -109,6 +115,26 @@ CREATE TABLE IF NOT EXISTS board_match_players (
   player_id TEXT NOT NULL,
   PRIMARY KEY (match_id, player_id)
 );
+
+-- Friendships table
+CREATE TABLE IF NOT EXISTS user_friendships (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  friend_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_friendship UNIQUE (user_id, friend_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_friendships_user ON user_friendships(user_id);
+CREATE INDEX IF NOT EXISTS idx_friendships_friend ON user_friendships(friend_id);
+CREATE INDEX IF NOT EXISTS idx_board_groups_invite_code ON board_groups(invite_code);
+
+-- Alter columns in case tables already existed without them
+ALTER TABLE board_groups ADD COLUMN IF NOT EXISTS created_by TEXT REFERENCES "user"(id) ON DELETE SET NULL;
+ALTER TABLE board_groups ADD COLUMN IF NOT EXISTS invite_code TEXT UNIQUE;
+ALTER TABLE board_players ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES "user"(id) ON DELETE SET NULL;
 `
 
 async function main() {

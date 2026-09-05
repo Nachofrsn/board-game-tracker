@@ -22,8 +22,16 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
       ? await authClient.signUp.email({ name, email, password })
       : await authClient.signIn.email({ email, password })
     setLoading(false)
-    if (result.error) { setError('No pudimos completar la operación. Revisá tus datos e intentá de nuevo.'); return }
-    window.location.href = '/'
+    if (result.error) {
+      console.error('Auth error:', result.error)
+      setError(result.error.message || 'No pudimos completar la operación. Revisá tus datos e intentá de nuevo.')
+      return
+    }
+    const redirectUrl =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('redirect') || '/'
+        : '/'
+    window.location.href = redirectUrl
   }
 
   return <form onSubmit={submit} className="flex flex-col gap-5">

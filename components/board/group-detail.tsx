@@ -1,7 +1,18 @@
 'use client'
 
 import * as React from 'react'
-import { ArrowLeft, Trophy, Gamepad2, ScrollText, UserPlus } from 'lucide-react'
+import {
+  ArrowLeft,
+  Trophy,
+  Gamepad2,
+  ScrollText,
+  UserPlus,
+  Share2,
+  Trash2,
+  Copy,
+  Check,
+  Users,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -24,18 +36,36 @@ import { AddGameDialog } from '@/components/board/add-game-dialog'
 import { RecordMatchDialog } from '@/components/board/record-match-dialog'
 import { useStore } from '@/lib/store'
 import { computePlayerStats } from '@/lib/stats'
+import { useFriends } from '@/lib/use-friends'
+import { authClient } from '@/lib/auth-client'
 
 function AddPlayerDialog({ groupId }: { groupId: string }) {
-  const { addPlayer } = useStore()
+  const { addPlayer, players } = useStore()
+  const { friends } = useFriends()
   const [open, setOpen] = React.useState(false)
   const [name, setName] = React.useState('')
 
-  function submit(e: React.FormEvent) {
+  const groupPlayers = players.filter((p) => p.groupId === groupId)
+  // Friends not yet in this group
+  const availableFriends = friends.filter(
+    (f) =>
+      !groupPlayers.some(
+        (p) => p.userId === f.id || p.name.toLowerCase() === f.name.toLowerCase()
+      )
+  )
+
+  function submitGuest(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return toast.error('Escribí un nombre')
-    addPlayer(groupId, name)
+    addPlayer(groupId, name.trim())
     toast.success(`${name.trim()} se sumó al grupo`)
     setName('')
+    setOpen(false)
+  }
+
+  function handleAddFriend(friend: { id: string; name: string }) {
+    addPlayer(groupId, friend.name, friend.id)
+    toast.success(`${friend.name} se sumó al grupo`)
     setOpen(false)
   }
 
@@ -43,40 +73,245 @@ function AddPlayerDialog({ groupId }: { groupId: string }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button variant="outline" size="sm">
-            <UserPlus data-icon="inline-start" />
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <UserPlus data-icon="inline-start" className="size-4" />
             Sumar jugador
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-serif text-lg">Sumar jugador</DialogTitle>
+          <DialogTitle className="font-serif text-lg">Sumar jugador a la mesa</DialogTitle>
+          <DialogDescription>
+            Sumá a uno de tus amigos registrados o agregá un jugador invitado.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="new-player">Nombre</FieldLabel>
-              <Input
-                id="new-player"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Nombre del jugador"
-                autoFocus
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter className="mt-5">
-            <Button type="submit">Agregar</Button>
+
+        {availableFriends.length > 0 ? (
+          <Tabs defaultValue="friends" className="mt-2">
+            <TabsList className="w-full">
+              <TabsTrigger value="friends" className="flex-1">
+                Tus amigos ({availableFriends.length})
+              </TabsTrigger>
+              <TabsTrigger value="guest" className="flex-1">
+                Invitado / Otro
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="friends" className="pt-3">
+              <div className="flex flex-col gap-2 max-h-[260px] overflow-y-auto pr-1">
+                {availableFriends.map((f) => (
+                  <div
+                    key={f.id}
+                    className="flex items-center justify-between rounded-lg border border-border/70 p-2.5 hover:bg-muted/40 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <PlayerAvatar id={f.id} name={f.name} className="size-8" />
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium leading-none">{f.name}</span>
+                        <span className="text-xs text-muted-foreground mt-0.5">{f.email}</span>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleAddFriend(f)}
+                    >
+                      Sumar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="guest" className="pt-3">
+              <form onSubmit={submitGuest}>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="new-player">Nombre del jugador invitado</FieldLabel>
+                    <Input
+                      id="new-player"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Ej: Renzo"
+                      autoFocus
+                    />
+                  </Field>
+                </FieldGroup>
+                <DialogFooter className="mt-5">
+                  <Button type="submit">Sumar invitado</Button>
+                </DialogFooter>
+              </form>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <form onSubmit={submitGuest} className="mt-2">
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="new-player">Nombre del jugador</FieldLabel>
+                <Input
+                  id="new-player"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ej: Renzo"
+                  autoFocus
+                />
+              </Field>
+            </FieldGroup>
+            {friends.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Tip: Podés agregar amigos desde la pestaña &quot;Amigos&quot; para sumarlos con un solo clic.
+              </p>
+            )}
+            <DialogFooter className="mt-5">
+              <Button type="submit">Agregar al grupo</Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function InviteGroupDialog({ groupName, inviteCode }: { groupName: string; inviteCode?: string | null }) {
+  const [open, setOpen] = React.useState(false)
+  const [copied, setCopied] = React.useState(false)
+
+  const inviteUrl =
+    typeof window !== 'undefined' && inviteCode
+      ? `${window.location.origin}/join/${inviteCode}`
+      : ''
+
+  function copyToClipboard() {
+    if (!inviteUrl) return
+    navigator.clipboard.writeText(inviteUrl)
+    setCopied(true)
+    toast.success('¡Enlace de invitación copiado!')
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  function handleShare() {
+    if (typeof navigator !== 'undefined' && navigator.share && inviteUrl) {
+      navigator
+        .share({
+          title: `Sumate a ${groupName} en Mesa Mayor`,
+          text: `Te invito a unirte a nuestro grupo de juegos de mesa "${groupName}".`,
+          url: inviteUrl,
+        })
+        .catch(() => {})
+    } else {
+      copyToClipboard()
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Share2 className="size-4" />
+            Invitar con link
+          </Button>
+        }
+      />
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-lg">Invitar con enlace</DialogTitle>
+          <DialogDescription>
+            Cualquier persona que reciba este link podrá sumarse a <strong>{groupName}</strong>. Si no tiene cuenta, se le pedirá registrarse.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4 pt-2">
+          <div className="flex items-center gap-2">
+            <Input readOnly value={inviteUrl} className="font-mono text-xs select-all" />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={copyToClipboard}
+              title="Copiar link"
+            >
+              {copied ? <Check className="size-4 text-primary" /> : <Copy className="size-4" />}
+            </Button>
+          </div>
+
+          <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground flex flex-col gap-1">
+            <span className="font-semibold text-foreground flex items-center gap-1.5">
+              <Users className="size-3.5 text-primary" />
+              ¿Cómo funciona?
+            </span>
+            <span>
+              La persona abre el link, crea su cuenta o inicia sesión, y se añade automáticamente a los jugadores de este grupo.
+            </span>
+          </div>
+
+          <DialogFooter className="mt-2">
+            <Button className="w-full gap-2" onClick={handleShare}>
+              <Share2 className="size-4" />
+              {typeof navigator !== 'undefined' && 'share' in navigator
+                ? 'Compartir enlace'
+                : 'Copiar enlace'}
+            </Button>
           </DialogFooter>
-        </form>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DeleteGroupDialog({
+  groupName,
+  onConfirm,
+}: {
+  groupName: string
+  onConfirm: () => Promise<void>
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [loading, setLoading] = React.useState(false)
+
+  async function handleDelete() {
+    setLoading(true)
+    await onConfirm()
+    setLoading(false)
+    setOpen(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5">
+            <Trash2 className="size-4" />
+            Borrar grupo
+          </Button>
+        }
+      />
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-serif text-lg text-destructive">
+            ¿Eliminar el grupo &quot;{groupName}&quot;?
+          </DialogTitle>
+          <DialogDescription>
+            Esta acción es irreversible. Se eliminarán permanentemente todos los juegos asociados, las partidas registradas y las estadísticas del grupo para todos los miembros.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="mt-4 gap-2 sm:gap-0">
+          <Button variant="outline" disabled={loading} onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" disabled={loading} onClick={handleDelete}>
+            {loading ? 'Eliminando...' : 'Sí, eliminar grupo'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
 export function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () => void }) {
-  const { groups, players, games, matches } = useStore()
+  const { groups, players, games, matches, deleteGroup } = useStore()
+  const { data: session } = authClient.useSession()
   const group = groups.find((g) => g.id === groupId)
 
   if (!group) {
@@ -91,10 +326,22 @@ export function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () =
     )
   }
 
+  // Only creator can delete group (if createdBy is set, must match session.user.id)
+  const isCreator = Boolean(
+    session?.user?.id && (!group.createdBy || group.createdBy === session.user.id)
+  )
+
   const groupPlayers = players.filter((p) => p.groupId === groupId)
   const groupGames = games.filter((g) => g.groupId === groupId)
   const groupMatches = matches.filter((m) => m.groupId === groupId)
   const stats = computePlayerStats(players, matches, groups, groupId)
+
+  async function handleConfirmDelete() {
+    const ok = await deleteGroup(groupId)
+    if (ok) {
+      onBack()
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,10 +372,17 @@ export function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () =
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
+            <InviteGroupDialog groupName={group.name} inviteCode={group.inviteCode} />
             <AddPlayerDialog groupId={groupId} />
             <AddGameDialog groupId={groupId} />
             <RecordMatchDialog groupId={groupId} />
+            {isCreator && (
+              <DeleteGroupDialog
+                groupName={group.name}
+                onConfirm={handleConfirmDelete}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -1,16 +1,20 @@
 'use client'
 
 import * as React from 'react'
-import { LayoutGrid, BarChart3 } from 'lucide-react'
+import { LayoutGrid, BarChart3, Users } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
 import { SiteHeader } from '@/components/board/site-header'
 import { GroupsPanel } from '@/components/board/groups-panel'
 import { GroupDetail } from '@/components/board/group-detail'
 import { GlobalDashboard } from '@/components/board/global-dashboard'
+import { FriendsPanel } from '@/components/friends/friends-panel'
+import { useFriends } from '@/lib/use-friends'
 
 export default function Page() {
   const [tab, setTab] = React.useState('grupos')
   const [selectedGroup, setSelectedGroup] = React.useState<string | null>(null)
+  const { incoming } = useFriends()
 
   function openGroup(id: string) {
     setSelectedGroup(id)
@@ -27,6 +31,15 @@ export default function Page() {
               <LayoutGrid data-icon="inline-start" />
               Grupos
             </TabsTrigger>
+            <TabsTrigger value="amigos">
+              <Users data-icon="inline-start" />
+              Amigos
+              {incoming.length > 0 && (
+                <Badge variant="destructive" className="ml-1.5 h-4 min-w-4 px-1 text-[10px] leading-none">
+                  {incoming.length}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="dashboard">
               <BarChart3 data-icon="inline-start" />
               Estadísticas
@@ -39,6 +52,10 @@ export default function Page() {
             ) : (
               <GroupsPanel onOpenGroup={openGroup} />
             )}
+          </TabsContent>
+
+          <TabsContent value="amigos">
+            <FriendsPanel />
           </TabsContent>
 
           <TabsContent value="dashboard">

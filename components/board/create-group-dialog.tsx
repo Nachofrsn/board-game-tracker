@@ -18,28 +18,71 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { useStore } from '@/lib/store'
 import { authClient } from '@/lib/auth-client'
 
+import { useFriends } from '@/lib/use-friends'
+import { Badge } from '@/components/ui/badge'
+import { PlayerAvatar } from '@/components/board/player-avatar'
+
+type FormPlayer = {
+  name: string
+  userId?: string | null
+}
+
 export function CreateGroupDialog({ onCreated }: { onCreated?: (id: string) => void }) {
   const { addGroup } = useStore()
   const { data: session } = authClient.useSession()
+  const { friends } = useFriends()
   const [open, setOpen] = React.useState(false)
   const [name, setName] = React.useState('')
-  const [players, setPlayers] = React.useState<string[]>(['', '', ''])
+  const [players, setPlayers] = React.useState<FormPlayer[]>([
+    { name: '', userId: null },
+    { name: '', userId: null },
+    { name: '', userId: null },
+  ])
 
   React.useEffect(() => {
     if (session?.user?.name) {
-      setPlayers((prev) => [session.user.name, prev[1] || '', prev[2] || ''])
+      setPlayers((prev) => [
+        { name: session.user.name, userId: session.user.id },
+        prev[1]?.name ? prev[1] : { name: '', userId: null },
+        prev[2]?.name ? prev[2] : { name: '', userId: null },
+      ])
     }
-  }, [session?.user?.name, open])
+  }, [session?.user?.name, session?.user?.id, open])
 
   function reset() {
     setName('')
-    setPlayers([session?.user?.name || '', '', ''])
+    setPlayers([
+      { name: session?.user?.name || '', userId: session?.user?.id || null },
+      { name: '', userId: null },
+      { name: '', userId: null },
+    ])
   }
+
+  function addFriendToPlayers(friend: { id: string; name: string }) {
+    setPlayers((prev) => {
+      // Look for first empty slot
+      const emptyIdx = prev.findIndex((p) => !p.name.trim())
+      if (emptyIdx !== -1) {
+        return prev.map((p, idx) =>
+          idx === emptyIdx ? { name: friend.name, userId: friend.id } : p
+        )
+      }
+      return [...prev, { name: friend.name, userId: friend.id }]
+    })
+  }
+
+  // Friends not currently in form
+  const availableFriends = friends.filter(
+    (f) =>
+      !players.some(
+        (p) => p.userId === f.id || p.name.toLowerCase() === f.name.toLowerCase()
+      )
+  )
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
     const cleanName = name.trim()
-    const cleanPlayers = players.map((p) => p.trim()).filter(Boolean)
+    const cleanPlayers = players.filter((p) => p.name.trim())
     if (!cleanName) {
       toast.error('Ponele un nombre al grupo')
       return
@@ -98,11 +141,15 @@ export function CreateGroupDialog({ onCreated }: { onCreated?: (id: string) => v
                 {players.map((p, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <Input
-                      value={p}
+                      value={p.name}
                       onChange={(e) =>
-                        setPlayers((prev) => prev.map((v, idx) => (idx === i ? e.target.value : v)))
+                        setPlayers((prev) =>
+                          prev.map((v, idx) =>
+                            idx === i ? { ...v, name: e.target.value, userId: null } : v
+                          )
+                        )
                       }
-                      placeholder={`Jugador ${i + 1}`}
+                      placeholder={`Jugador ${i + 1}${i === 0 ? ' (vos)' : ''}`}
                     />
                     {players.length > 2 && (
                       <Button
@@ -118,12 +165,34 @@ export function CreateGroupDialog({ onCreated }: { onCreated?: (id: string) => v
                   </div>
                 ))}
               </div>
+
+              {availableFriends.length > 0 && (
+                <div className="mt-3 flex flex-col gap-1.5 rounded-lg border border-border/70 bg-muted/30 p-2.5">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Sumar rápido de tus amigos:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableFriends.map((f) => (
+                      <Badge
+                        key={f.id}
+                        variant="outline"
+                        className="cursor-pointer gap-1 hover:bg-primary/10 hover:text-primary transition-colors py-1 px-2 text-xs"
+                        onClick={() => addFriendToPlayers(f)}
+                      >
+                        <PlayerAvatar id={f.id} name={f.name} className="size-3.5" />
+                        <span>+ {f.name}</span>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="mt-1 w-fit"
-                onClick={() => setPlayers((prev) => [...prev, ''])}
+                className="mt-2 w-fit"
+                onClick={() => setPlayers((prev) => [...prev, { name: '', userId: null }])}
               >
                 <UserPlus data-icon="inline-start" />
                 Agregar jugador

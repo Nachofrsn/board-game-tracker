@@ -14,7 +14,18 @@ import Link from 'next/link'
 export function GroupsPanel({ onOpenGroup }: { onOpenGroup: (id: string) => void }) {
   const { groups, players, games, matches } = useStore()
   const { data: session, isPending } = authClient.useSession()
-  const visibleGroups = session ? groups.filter((group) => players.some((player) => player.groupId === group.id && player.name.toLowerCase() === session.user.name.toLowerCase())) : []
+  const visibleGroups = session
+    ? groups.filter(
+        (group) =>
+          (group.createdBy && group.createdBy === session.user.id) ||
+          players.some(
+            (player) =>
+              player.groupId === group.id &&
+              (player.userId === session.user.id ||
+                player.name.toLowerCase() === session.user.name.toLowerCase())
+          )
+      )
+    : []
 
   if (isPending) return null
   if (!session) return <Card className="border-primary/20 bg-card"><CardContent className="flex flex-col items-center gap-3 p-10 text-center"><h2 className="font-serif text-2xl font-semibold">Tus grupos están protegidos</h2><p className="max-w-md text-sm text-muted-foreground">Iniciá sesión para ver los grupos donde jugás. El leaderboard general permanece disponible para toda la mesa.</p><Link className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" href="/sign-in">Iniciar sesión</Link></CardContent></Card>
@@ -49,6 +60,7 @@ export function GroupsPanel({ onOpenGroup }: { onOpenGroup: (id: string) => void
             const members = players.filter((p) => p.groupId === group.id)
             const gameCount = games.filter((g) => g.groupId === group.id).length
             const matchCount = matches.filter((m) => m.groupId === group.id).length
+            const isCreator = group.createdBy === session.user.id
             return (
               <Card
                 key={group.id}
@@ -57,10 +69,17 @@ export function GroupsPanel({ onOpenGroup }: { onOpenGroup: (id: string) => void
                 <CardContent className="flex h-full flex-col gap-4 p-5">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <h3 className="font-serif text-lg font-semibold leading-tight text-foreground">
-                        {group.name}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-serif text-lg font-semibold leading-tight text-foreground">
+                          {group.name}
+                        </h3>
+                        {isCreator && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            Creador
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
                         {members.length} jugadores
                       </p>
                     </div>
