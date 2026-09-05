@@ -3,12 +3,13 @@ import { username } from 'better-auth/plugins'
 import { Pool } from 'pg'
 
 const origins = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:3002',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:3001',
+  'http://localhost:*',
+  'http://127.0.0.1:*',
+  'http://192.168.*:*',
+  'http://10.*:*',
+  'https://*.vercel.app',
   process.env.BETTER_AUTH_URL,
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined,
   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
 ].filter(Boolean) as string[]
 

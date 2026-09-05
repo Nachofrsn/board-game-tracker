@@ -21,7 +21,7 @@ type JoinData = {
   members: Array<{ id: string; name: string; initials: string; color: string; userId: string | null }>
   isMember: boolean
   isLoggedIn: boolean
-  currentUser: { id: string; name: string; username?: string | null; email: string } | null
+  currentUser: { id: string; name: string; username?: string | null; email?: string } | null
 }
 
 export default function JoinGroupPage() {
@@ -187,7 +187,7 @@ export default function JoinGroupPage() {
                           Para sumarte al grupo, iniciá sesión o creá tu cuenta
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Es gratis y solo te toma unos segundos.
+                          Solo necesitás un usuario y contraseña (sin email).
                         </p>
                       </div>
                       <div className="flex flex-col gap-2 pt-2">

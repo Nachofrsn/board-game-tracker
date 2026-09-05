@@ -130,38 +130,53 @@ export async function POST(request: Request) {
   const { action } = body
 
   if (action === 'send_request') {
-    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
     const targetUserId = typeof body.targetUserId === 'string' ? body.targetUserId.trim() : ''
+    const targetUsername = typeof body.targetUsername === 'string'
+      ? body.targetUsername.trim().toLowerCase()
+      : (typeof body.username === 'string' ? body.username.trim().toLowerCase() : '')
 
-    if (!email && !targetUserId) {
-      return NextResponse.json({ error: 'Debes indicar un usuario o email.' }, { status: 400 })
+    if (!targetUserId && !targetUsername && !body.email) {
+      return NextResponse.json({ error: 'Debés indicar un nombre de usuario.' }, { status: 400 })
     }
 
     // Find target user
-    let targetUser: { id: string; name: string; email: string; username?: string | null } | undefined
-    if (email) {
+    let targetUser: { id: string; name: string; username?: string | null } | undefined
+    if (targetUserId) {
       const [u] = await db
-        .select({ id: users.id, name: users.name, email: users.email, username: users.username })
+        .select({ id: users.id, name: users.name, username: users.username })
+        .from(users)
+        .where(eq(users.id, targetUserId))
+        .limit(1)
+      targetUser = u
+    } else if (targetUsername) {
+      const [u] = await db
+        .select({ id: users.id, name: users.name, username: users.username })
         .from(users)
         .where(
           or(
-            sql`LOWER(${users.email}) = LOWER(${email})`,
-            sql`LOWER(${users.username}) = LOWER(${email})`
+            sql`LOWER(${users.username}) = LOWER(${targetUsername})`,
+            sql`LOWER(${users.name}) = LOWER(${targetUsername})`
           )
         )
         .limit(1)
       targetUser = u
-    } else if (targetUserId) {
+    } else if (body.email) {
+      const clean = String(body.email).trim().toLowerCase()
       const [u] = await db
-        .select({ id: users.id, name: users.name, email: users.email, username: users.username })
+        .select({ id: users.id, name: users.name, username: users.username })
         .from(users)
-        .where(eq(users.id, targetUserId))
+        .where(
+          or(
+            sql`LOWER(${users.email}) = LOWER(${clean})`,
+            sql`LOWER(${users.username}) = LOWER(${clean})`
+          )
+        )
         .limit(1)
       targetUser = u
     }
 
     if (!targetUser) {
-      return NextResponse.json({ error: 'No se encontró ningún usuario con esos datos.' }, { status: 404 })
+      return NextResponse.json({ error: 'No se encontró ningún usuario con ese nombre.' }, { status: 404 })
     }
 
     if (targetUser.id === currentUserId) {

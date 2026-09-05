@@ -40,12 +40,12 @@ export function useFriends() {
   }, [fetchFriends])
 
   const sendRequest = React.useCallback(
-    async (emailOrId: { email?: string; targetUserId?: string }) => {
+    async (params: { targetUserId?: string; targetUsername?: string; email?: string }) => {
       try {
         const res = await fetch('/api/friends', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'send_request', ...emailOrId }),
+          body: JSON.stringify({ action: 'send_request', ...params }),
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error || 'Error al enviar solicitud')

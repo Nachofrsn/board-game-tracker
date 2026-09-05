@@ -83,9 +83,13 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
         return
       }
 
-      const redirectUrl =
+      const rawRedirect =
         typeof window !== 'undefined'
           ? new URLSearchParams(window.location.search).get('redirect') || '/'
+          : '/'
+      const redirectUrl =
+        rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')
+          ? rawRedirect
           : '/'
       window.location.href = redirectUrl
     } catch (err: any) {

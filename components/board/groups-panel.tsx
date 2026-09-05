@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronRight, Users, Gamepad2, Swords, MoreVertical, LogOut, Trash2 } from 'lucide-react'
+import { ChevronRight, Users, Gamepad2, Swords, MoreVertical, LogOut, Trash2, Share2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,6 +17,7 @@ import { PlayerAvatar } from '@/components/board/player-avatar'
 import { CreateGroupDialog } from '@/components/board/create-group-dialog'
 import { DeleteGroupDialog } from '@/components/board/delete-group-dialog'
 import { LeaveGroupDialog } from '@/components/board/leave-group-dialog'
+import { InviteGroupDialog } from '@/components/board/group-detail'
 import { useStore } from '@/lib/store'
 import { authClient } from '@/lib/auth-client'
 import type { Group } from '@/lib/types'
@@ -39,6 +40,7 @@ function GroupCardItem({
   const gameCount = games.filter((g) => g.groupId === group.id).length
   const matchCount = matches.filter((m) => m.groupId === group.id).length
   const isCreator = Boolean(group.createdBy && group.createdBy === session?.user?.id)
+  const [inviteOpen, setInviteOpen] = React.useState(false)
 
   return (
     <>
@@ -80,9 +82,13 @@ function GroupCardItem({
                     </Button>
                   }
                 />
-                <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => onOpenGroup(group.id)}>
                     Abrir grupo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setInviteOpen(true)}>
+                    <Share2 className="size-4 mr-1.5 text-primary" />
+                    Invitar con link
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -141,6 +147,14 @@ function GroupCardItem({
       </Card>
 
       {/* Confirmation Modals */}
+      <InviteGroupDialog
+        groupName={group.name}
+        inviteCode={group.inviteCode}
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        trigger={null}
+      />
+
       <LeaveGroupDialog
         groupId={group.id}
         groupName={group.name}

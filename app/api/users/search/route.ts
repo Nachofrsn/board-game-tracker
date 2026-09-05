@@ -18,13 +18,12 @@ export async function GET(request: Request) {
 
   const currentUserId = session.user.id
 
-  // Search users matching name or email, excluding current user
+  // Search users matching name or username, excluding current user
   const foundUsers = await db
     .select({
       id: users.id,
       name: users.name,
       username: users.username,
-      email: users.email,
       image: users.image,
     })
     .from(users)
@@ -33,8 +32,7 @@ export async function GET(request: Request) {
         ne(users.id, currentUserId),
         or(
           sql`LOWER(${users.name}) LIKE ${'%' + q + '%'}`,
-          sql`LOWER(${users.username}) LIKE ${'%' + q + '%'}`,
-          sql`LOWER(${users.email}) LIKE ${'%' + q + '%'}`
+          sql`LOWER(${users.username}) LIKE ${'%' + q + '%'}`
         )
       )
     )

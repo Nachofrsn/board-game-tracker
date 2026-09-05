@@ -12,6 +12,7 @@ import {
   Copy,
   Check,
   Users,
+  MessageCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -177,9 +178,25 @@ function AddPlayerDialog({ groupId }: { groupId: string }) {
   )
 }
 
-function InviteGroupDialog({ groupName, inviteCode }: { groupName: string; inviteCode?: string | null }) {
-  const [open, setOpen] = React.useState(false)
+export function InviteGroupDialog({
+  groupName,
+  inviteCode,
+  trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: {
+  groupName: string
+  inviteCode?: string | null
+  trigger?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
+  const [internalOpen, setInternalOpen] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
+
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : internalOpen
+  const setOpen = isControlled ? controlledOnOpenChange || (() => {}) : setInternalOpen
 
   const inviteUrl =
     typeof window !== 'undefined' && inviteCode
@@ -192,6 +209,12 @@ function InviteGroupDialog({ groupName, inviteCode }: { groupName: string; invit
     setCopied(true)
     toast.success('¡Enlace de invitación copiado!')
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  function handleShareWhatsApp() {
+    if (!inviteUrl) return
+    const text = `¡Sumate a nuestro grupo "${groupName}" en Mesa Mayor para registrar nuestras partidas!\n${inviteUrl}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
   }
 
   function handleShare() {
@@ -210,25 +233,31 @@ function InviteGroupDialog({ groupName, inviteCode }: { groupName: string; invit
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <Share2 className="size-4" />
-            Invitar con link
-          </Button>
-        }
-      />
+      {trigger !== null && (
+        <DialogTrigger
+          render={
+            trigger ? (
+              (trigger as React.ReactElement)
+            ) : (
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Share2 className="size-4" />
+                Invitar con link
+              </Button>
+            )
+          }
+        />
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-serif text-lg">Invitar con enlace</DialogTitle>
           <DialogDescription>
-            Cualquier persona que reciba este link podrá sumarse a <strong>{groupName}</strong>. Si no tiene cuenta, se le pedirá registrarse.
+            Cualquier persona que reciba este link podrá sumarse a <strong>{groupName}</strong>. Si no tiene cuenta, solo necesitará su usuario y contraseña.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 pt-2">
           <div className="flex items-center gap-2">
-            <Input readOnly value={inviteUrl} className="font-mono text-xs select-all" />
+            <Input readOnly value={inviteUrl} className="font-mono text-xs select-all bg-background" />
             <Button
               type="button"
               variant="outline"
@@ -240,24 +269,36 @@ function InviteGroupDialog({ groupName, inviteCode }: { groupName: string; invit
             </Button>
           </div>
 
+          <div className="flex flex-col gap-2">
+            <Button
+              className="w-full gap-2 bg-[#25D366] hover:bg-[#20ba59] text-white border-0 shadow-sm"
+              onClick={handleShareWhatsApp}
+            >
+              <MessageCircle className="size-4 fill-current" />
+              Compartir por WhatsApp
+            </Button>
+
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" className="gap-2 text-xs" onClick={copyToClipboard}>
+                {copied ? <Check className="size-3.5 text-primary" /> : <Copy className="size-3.5" />}
+                {copied ? '¡Copiado!' : 'Copiar enlace'}
+              </Button>
+              <Button variant="outline" className="gap-2 text-xs" onClick={handleShare}>
+                <Share2 className="size-3.5" />
+                Más opciones
+              </Button>
+            </div>
+          </div>
+
           <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground flex flex-col gap-1">
             <span className="font-semibold text-foreground flex items-center gap-1.5">
               <Users className="size-3.5 text-primary" />
               ¿Cómo funciona?
             </span>
             <span>
-              La persona abre el link, crea su cuenta o inicia sesión, y se añade automáticamente a los jugadores de este grupo.
+              La persona abre el link, crea su cuenta o inicia sesión (sin email, solo usuario y contraseña), y se añade automáticamente a los jugadores de este grupo.
             </span>
           </div>
-
-          <DialogFooter className="mt-2">
-            <Button className="w-full gap-2" onClick={handleShare}>
-              <Share2 className="size-4" />
-              {typeof navigator !== 'undefined' && 'share' in navigator
-                ? 'Compartir enlace'
-                : 'Copiar enlace'}
-            </Button>
-          </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>
