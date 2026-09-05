@@ -16,6 +16,7 @@ export type Group = {
 export type Friend = {
   id: string
   name: string
+  username?: string | null
   email: string
   image?: string | null
 }

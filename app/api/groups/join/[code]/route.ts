@@ -79,7 +79,7 @@ export async function GET(
     isMember,
     isLoggedIn: Boolean(session?.user),
     currentUser: session?.user
-      ? { id: session.user.id, name: session.user.name, email: session.user.email }
+      ? { id: session.user.id, name: session.user.name, username: (session.user as any).username || null, email: session.user.email }
       : null,
   })
 }

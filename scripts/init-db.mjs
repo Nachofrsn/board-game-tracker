@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS "user" (
   email TEXT NOT NULL UNIQUE,
   "emailVerified" BOOLEAN NOT NULL DEFAULT FALSE,
   image TEXT,
+  username TEXT UNIQUE,
+  "displayUsername" TEXT,
   "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -135,6 +137,10 @@ CREATE INDEX IF NOT EXISTS idx_board_groups_invite_code ON board_groups(invite_c
 ALTER TABLE board_groups ADD COLUMN IF NOT EXISTS created_by TEXT REFERENCES "user"(id) ON DELETE SET NULL;
 ALTER TABLE board_groups ADD COLUMN IF NOT EXISTS invite_code TEXT UNIQUE;
 ALTER TABLE board_players ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES "user"(id) ON DELETE SET NULL;
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS username TEXT;
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "displayUsername" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "user_username_uidx" ON "user" (username);
+CREATE UNIQUE INDEX IF NOT EXISTS "user_username_lower_uidx" ON "user" (LOWER(username));
 `
 
 async function main() {

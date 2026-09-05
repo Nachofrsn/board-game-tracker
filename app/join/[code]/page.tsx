@@ -21,7 +21,7 @@ type JoinData = {
   members: Array<{ id: string; name: string; initials: string; color: string; userId: string | null }>
   isMember: boolean
   isLoggedIn: boolean
-  currentUser: { id: string; name: string; email: string } | null
+  currentUser: { id: string; name: string; username?: string | null; email: string } | null
 }
 
 export default function JoinGroupPage() {
@@ -210,10 +210,12 @@ export default function JoinGroupPage() {
                       <div>
                         <p className="text-xs text-muted-foreground">Sesión iniciada como</p>
                         <p className="font-semibold text-sm text-foreground">
-                          {data.currentUser?.name}{' '}
-                          <span className="text-muted-foreground font-normal">
-                            ({data.currentUser?.email})
-                          </span>
+                          {data.currentUser?.name}
+                          {data.currentUser?.username && (
+                            <span className="text-muted-foreground font-normal ml-1.5">
+                              (@{data.currentUser?.username})
+                            </span>
+                          )}
                         </p>
                       </div>
                       <Button

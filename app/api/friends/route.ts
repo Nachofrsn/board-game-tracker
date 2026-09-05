@@ -24,12 +24,13 @@ export async function GET() {
 
   const friendIds = acceptedRows.map((r) => (r.userId === currentUserId ? r.friendId : r.userId))
 
-  let friendsList: Array<{ id: string; name: string; email: string; image: string | null }> = []
+  let friendsList: Array<{ id: string; name: string; username: string | null; email: string; image: string | null }> = []
   if (friendIds.length > 0) {
     friendsList = await db
       .select({
         id: users.id,
         name: users.name,
+        username: users.username,
         email: users.email,
         image: users.image,
       })
@@ -47,13 +48,14 @@ export async function GET() {
     .from(userFriendships)
     .where(and(eq(userFriendships.friendId, currentUserId), eq(userFriendships.status, 'pending')))
 
-  let incoming: Array<{ id: string; createdAt: Date; user: { id: string; name: string; email: string; image: string | null } }> = []
+  let incoming: Array<{ id: string; createdAt: Date; user: { id: string; name: string; username: string | null; email: string; image: string | null } }> = []
   if (incomingRows.length > 0) {
     const senderIds = incomingRows.map((r) => r.senderId)
     const senders = await db
       .select({
         id: users.id,
         name: users.name,
+        username: users.username,
         email: users.email,
         image: users.image,
       })
@@ -84,13 +86,14 @@ export async function GET() {
     .from(userFriendships)
     .where(and(eq(userFriendships.userId, currentUserId), eq(userFriendships.status, 'pending')))
 
-  let outgoing: Array<{ id: string; createdAt: Date; user: { id: string; name: string; email: string; image: string | null } }> = []
+  let outgoing: Array<{ id: string; createdAt: Date; user: { id: string; name: string; username: string | null; email: string; image: string | null } }> = []
   if (outgoingRows.length > 0) {
     const targetIds = outgoingRows.map((r) => r.targetId)
     const targets = await db
       .select({
         id: users.id,
         name: users.name,
+        username: users.username,
         email: users.email,
         image: users.image,
       })
@@ -131,21 +134,26 @@ export async function POST(request: Request) {
     const targetUserId = typeof body.targetUserId === 'string' ? body.targetUserId.trim() : ''
 
     if (!email && !targetUserId) {
-      return NextResponse.json({ error: 'Debes indicar un email o usuario.' }, { status: 400 })
+      return NextResponse.json({ error: 'Debes indicar un usuario o email.' }, { status: 400 })
     }
 
     // Find target user
-    let targetUser: { id: string; name: string; email: string } | undefined
+    let targetUser: { id: string; name: string; email: string; username?: string | null } | undefined
     if (email) {
       const [u] = await db
-        .select({ id: users.id, name: users.name, email: users.email })
+        .select({ id: users.id, name: users.name, email: users.email, username: users.username })
         .from(users)
-        .where(sql`LOWER(${users.email}) = LOWER(${email})`)
+        .where(
+          or(
+            sql`LOWER(${users.email}) = LOWER(${email})`,
+            sql`LOWER(${users.username}) = LOWER(${email})`
+          )
+        )
         .limit(1)
       targetUser = u
     } else if (targetUserId) {
       const [u] = await db
-        .select({ id: users.id, name: users.name, email: users.email })
+        .select({ id: users.id, name: users.name, email: users.email, username: users.username })
         .from(users)
         .where(eq(users.id, targetUserId))
         .limit(1)

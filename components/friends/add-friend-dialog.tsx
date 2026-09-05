@@ -18,6 +18,7 @@ import { PlayerAvatar } from '@/components/board/player-avatar'
 type SearchUser = {
   id: string
   name: string
+  username?: string | null
   email: string
   image?: string | null
   status: 'none' | 'friend' | 'pending_sent' | 'pending_received'
@@ -119,7 +120,7 @@ export function AddFriendDialog({
         <DialogHeader>
           <DialogTitle className="font-serif text-xl">Agregar un amigo</DialogTitle>
           <DialogDescription>
-            Buscá por nombre o email para enviar una solicitud de amistad.
+            Buscá por usuario o nombre para enviar una solicitud de amistad.
           </DialogDescription>
         </DialogHeader>
 
@@ -129,7 +130,7 @@ export function AddFriendDialog({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nombre o email..."
+              placeholder="Buscar por usuario o nombre..."
               className="pl-9"
               autoFocus
             />
@@ -150,7 +151,9 @@ export function AddFriendDialog({
                     <PlayerAvatar id={user.id} name={user.name} className="size-9" />
                     <div className="flex flex-col">
                       <span className="text-sm font-medium text-foreground">{user.name}</span>
-                      <span className="text-xs text-muted-foreground">{user.email}</span>
+                      {user.username && (
+                        <span className="text-xs text-muted-foreground">@{user.username}</span>
+                      )}
                     </div>
                   </div>
 

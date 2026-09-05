@@ -111,7 +111,9 @@ function AddPlayerDialog({ groupId }: { groupId: string }) {
                       <PlayerAvatar id={f.id} name={f.name} className="size-8" />
                       <div className="flex flex-col">
                         <span className="text-sm font-medium leading-none">{f.name}</span>
-                        <span className="text-xs text-muted-foreground mt-0.5">{f.email}</span>
+                        {f.username && (
+                          <span className="text-xs text-muted-foreground mt-0.5">@{f.username}</span>
+                        )}
                       </div>
                     </div>
                     <Button

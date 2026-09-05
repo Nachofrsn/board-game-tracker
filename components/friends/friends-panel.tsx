@@ -121,7 +121,7 @@ export function FriendsPanel() {
                 </EmptyMedia>
                 <EmptyTitle>Todavía no agregaste amigos</EmptyTitle>
                 <EmptyDescription>
-                  Buscá a tus amigos por su email o nombre de usuario para empezar a compartir mesas de juego.
+                  Buscá a tus amigos por su nombre de usuario para empezar a compartir mesas de juego.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -158,7 +158,9 @@ export function FriendsPanel() {
                             <h3 className="font-serif text-base font-semibold text-foreground leading-tight">
                               {friend.name}
                             </h3>
-                            <span className="text-xs text-muted-foreground">{friend.email}</span>
+                            {friend.username && (
+                              <span className="text-xs text-muted-foreground">@{friend.username}</span>
+                            )}
                           </div>
                         </div>
 
@@ -221,7 +223,9 @@ export function FriendsPanel() {
                         <span className="text-sm font-semibold text-foreground">
                           {req.user.name}
                         </span>
-                        <span className="text-xs text-muted-foreground">{req.user.email}</span>
+                        {req.user.username ? (
+                          <span className="text-xs text-muted-foreground">@{req.user.username}</span>
+                        ) : null}
                       </div>
                     </div>
 
@@ -237,7 +241,7 @@ export function FriendsPanel() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="px-2 text-muted-foreground hover:text-destructive"
+                        className="size-8 p-0 text-muted-foreground hover:text-destructive"
                         onClick={() => declineRequest(req.id)}
                       >
                         <X className="size-3.5" />
@@ -251,24 +255,16 @@ export function FriendsPanel() {
         </TabsContent>
 
         {/* Tab 3: Outgoing Requests */}
-        <TabsContent value="outgoing" className="pt-4">
+        <TabsContent value="outgoing" className="mt-4">
           {outgoing.length === 0 ? (
-            <Empty className="rounded-xl border border-dashed border-border bg-card/50 py-12">
-              <EmptyHeader>
-                <EmptyMedia variant="icon">
-                  <Clock />
-                </EmptyMedia>
-                <EmptyTitle>No enviaste solicitudes pendientes</EmptyTitle>
-                <EmptyDescription>
-                  Las solicitudes que envíes y aún no hayan sido aceptadas aparecerán acá.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No tenés solicitudes enviadas pendientes.
+            </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {outgoing.map((req) => (
-                <Card key={req.id} className="border-border/80">
-                  <CardContent className="flex items-center justify-between gap-3 p-4">
+                <Card key={req.id} className="border-border/60">
+                  <CardContent className="flex items-center justify-between p-4">
                     <div className="flex items-center gap-3">
                       <PlayerAvatar
                         id={req.user.id}
@@ -279,7 +275,9 @@ export function FriendsPanel() {
                         <span className="text-sm font-semibold text-foreground">
                           {req.user.name}
                         </span>
-                        <span className="text-xs text-muted-foreground">{req.user.email}</span>
+                        {req.user.username ? (
+                          <span className="text-xs text-muted-foreground">@{req.user.username}</span>
+                        ) : null}
                         <span className="text-[11px] text-muted-foreground/80 mt-0.5 flex items-center gap-1">
                           <Clock className="size-3" />
                           Esperando confirmación...
